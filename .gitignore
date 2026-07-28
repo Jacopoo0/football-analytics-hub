@@ -1,0 +1,107 @@
+# -------------------------
+# Python bytecode / cache
+# -------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Packaging / build
+*.egg
+*.egg-info/
+.eggs/
+dist/
+build/
+pip-wheel-metadata/
+
+# -------------------------
+# Virtual environments
+# -------------------------
+venv/
+.venv/
+env/
+ENV/
+.python-version
+
+# -------------------------
+# Environment variables / secrets
+# -------------------------
+.env
+.env.*
+!.env.example
+
+.streamlit/secrets.toml
+!.streamlit/secrets.toml.example
+
+# -------------------------
+# Streamlit local cache
+# -------------------------
+.streamlit/cache/
+
+# -------------------------
+# Project data and generated outputs
+# -------------------------
+data/raw/
+data/processed/
+data/cache/
+reports/output/
+
+# Optional: keep this only if generated locally
+# docs/screenshots/generated/
+
+# -------------------------
+# Testing / coverage
+# -------------------------
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+
+# -------------------------
+# Linting / type-checking caches
+# -------------------------
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.pytype/
+.cache/
+
+# -------------------------
+# Notebooks
+# -------------------------
+.ipynb_checkpoints/
+
+# -------------------------
+# Logs / temporary files
+# -------------------------
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+logs/
+
+# -------------------------
+# IDE / editor
+# -------------------------
+.vscode/
+.idea/
+*.code-workspace
+
+# -------------------------
+# OS files
+# -------------------------
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# -------------------------
+# Local deployment / browser artifacts
+# -------------------------
+playwright-report/
+test-results/

@@ -1,0 +1,40 @@
+======================================================================
+TEST: ENG-Premier League 2022-2023
+======================================================================
+[INFO] schedule: 760 righe, colonne=['date', 'time', 'round', 'day', 'venue', 'result']
+[INFO] misc: 760 righe, colonne=[('date', ''), ('round', ''), ('day', ''), ('venue', ''), ('result', ''), ('GF', '')]
+[INFO] shooting: 760 righe, colonne=[('date', ''), ('round', ''), ('day', ''), ('venue', ''), ('result', ''), ('GF', '')]
+[DIAG] schedule: 760 righe, 17 colonne — ['date', 'time', 'round', 'day', 'venue', 'result', 'GF', 'GA', 'opponent', 'Poss']
+[DIAG]   Sh: COLONNA MANCANTE
+[DIAG]   SoT: COLONNA MANCANTE
+[DIAG]   Gls: COLONNA MANCANTE
+[DIAG]   Fls: COLONNA MANCANTE
+[DIAG]   CrdY: COLONNA MANCANTE
+[DIAG]   CrdR: COLONNA MANCANTE
+[DIAG]   Poss: 50.0 (media)
+[DIAG] misc: 760 righe, 22 colonne — [('date', ''), ('round', ''), ('day', ''), ('venue', ''), ('result', ''), ('GF', ''), ('GA', ''), ('opponent', ''), ('Performance', 'CrdY'), ('Performance', 'CrdR')]
+[DIAG]   Sh: COLONNA MANCANTE
+[DIAG]   SoT: COLONNA MANCANTE
+[DIAG]   Gls: COLONNA MANCANTE
+[DIAG]   Fls: COLONNA MANCANTE
+[DIAG]   CrdY: COLONNA MANCANTE
+[DIAG]   CrdR: COLONNA MANCANTE
+[DIAG]   Poss: COLONNA MANCANTE
+[DIAG] shooting: 760 righe, 18 colonne — [('date', ''), ('round', ''), ('day', ''), ('venue', ''), ('result', ''), ('GF', ''), ('GA', ''), ('opponent', ''), ('Standard', 'Gls'), ('Standard', 'Sh')]
+[DIAG]   Sh: COLONNA MANCANTE
+[DIAG]   SoT: COLONNA MANCANTE
+[DIAG]   Gls: COLONNA MANCANTE
+[DIAG]   Fls: COLONNA MANCANTE
+[DIAG]   CrdY: COLONNA MANCANTE
+[DIAG]   CrdR: COLONNA MANCANTE
+[DIAG]   Poss: COLONNA MANCANTE
+[INFO] Team della lega (20): ['Arsenal', 'Aston Villa', 'Bournemouth', 'Brentford', 'Brighton', 'Chelsea', 'Crystal Palace', 'Everton', 'Fulham', 'Leeds United', 'Leicester City', 'Liverpool', 'Manchester City', 'Manchester Utd', 'Newcastle', 'Nottingham', 'Southampton', 'Tottenham', 'West Ham', 'Wolves']
+[DIAG] Dopo merge: 760 righe, 37 colonne
+[INFO] Scaricati 760 record per 760 partite (salvati in cache)
+[INFO] Limitate a 3 record per 3 partite (max_matches=3)
+Teams found: 3
+Team IDs: ['Arsenal', 'Aston Villa', 'Crystal Palace']
+Records: 3, Matches: 3
+Zero contamination: all Premier League 2022-2023
+Self-matches: 0
+DONE

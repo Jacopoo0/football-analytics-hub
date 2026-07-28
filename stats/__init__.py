@@ -1,0 +1,1 @@
+# TacticalPulse Index - Statistical validation
