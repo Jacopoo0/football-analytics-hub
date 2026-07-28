@@ -13,8 +13,7 @@ from pathlib import Path
 import pandas as pd
 
 _DATA_RAW = Path(__file__).resolve().parent.parent / "data" / "raw"
-
-
+_DEMO_CACHE = Path(__file__).resolve().parent.parent / "data" / "demo_cache"
 
 
 def _create_fbref(
@@ -47,6 +46,42 @@ def _cache_path(league: str, season: str) -> Path:
     _DATA_RAW.mkdir(parents=True, exist_ok=True)
     safe_league = league.replace(" ", "_").replace("-", "_")
     return _DATA_RAW / f"{safe_league}_{season}.parquet"
+
+
+def _demo_cache_path(league: str, season: str) -> Path:
+    """Restituisce il percorso del file Parquet in data/demo_cache/."""
+    safe_league = league.replace(" ", "_").replace("-", "_")
+    return _DEMO_CACHE / f"{safe_league}_{season}.parquet"
+
+
+def is_demo_mode() -> bool:
+    """True se Chrome non e' disponibile (cloud/demo deployment)."""
+    return not _check_chrome_available()
+
+
+def get_demo_cache_combinations(
+    leagues: list[str], seasons: list[str]
+) -> list[tuple[str, str]]:
+    """Restituisce le combinazioni (lega, stagione) disponibili in demo_cache.
+
+    Parametri
+    ---------
+    leagues : list[str]
+        Lista di codici lega da verificare.
+    seasons : list[str]
+        Lista di stagioni da verificare.
+
+    Returns
+    -------
+    list[tuple[str, str]]
+        Combinazioni (lega, stagione) presenti nel demo_cache.
+    """
+    combos: list[tuple[str, str]] = []
+    for league in leagues:
+        for season in seasons:
+            if _demo_cache_path(league, season).exists():
+                combos.append((league, season))
+    return combos
 
 
 def _flatten_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -283,6 +318,26 @@ def load_events(
             df = df[df["game_id"].isin(game_ids)].copy()
             print(f"[INFO] Limitate a {len(df)} record per {len(game_ids)} partite (max_matches={max_matches})")
         return df
+
+    # Se Chrome non e' disponibile, prova il demo cache
+    if not _check_chrome_available():
+        demo = _demo_cache_path(league, season)
+        if demo.exists():
+            df = pd.read_parquet(demo)
+            n_matches = df["game_id"].nunique() if "game_id" in df.columns else 0
+            n_events = len(df)
+            print(f"[INFO] Caricati {n_events} record per {n_matches} partite (da demo cache)")
+            if max_matches is not None:
+                game_ids = df["game_id"].unique()[:max_matches]
+                df = df[df["game_id"].isin(game_ids)].copy()
+                print(f"[INFO] Limitate a {len(df)} record per {len(game_ids)} partite (max_matches={max_matches})")
+            return df
+        raise ValueError(
+            f"Dati demo non disponibili per {league} {season}. "
+            "Se sei in modalita' demo (cloud), assicurati che i file Parquet "
+            "siano presenti in data/demo_cache/. "
+            "In locale, installa Google Chrome per il download live."
+        )
 
     try:
         sched, misc, shoot = _download_team_match_stats(league, season)

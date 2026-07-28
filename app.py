@@ -26,7 +26,7 @@ if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
 from core.config import load_environment, get_ai_config, get_groq_api_key
-from core.data_loader import load_events
+from core.data_loader import load_events, is_demo_mode, get_demo_cache_combinations
 from core.pressure import compute_pressure
 from core.discipline import compute_discipline
 from core.network import compute_network
@@ -350,66 +350,97 @@ def _render_ai_debug():
 st.sidebar.title("⚽ Football Analytics Hub")
 st.sidebar.markdown("---")
 
-sel_league = st.sidebar.selectbox("Lega", LEAGUES, key="sel_league")
-sel_season = st.sidebar.selectbox("Stagione", SEASONS, key="sel_season")
+# ── Demo mode detection ──────────────────────────────────────────
+_demo_mode = is_demo_mode()
+_demo_combos: list[tuple[str, str]] | None = None
+if _demo_mode:
+    _demo_combos = get_demo_cache_combinations(LEAGUES, SEASONS)
+    if _demo_combos:
+        st.sidebar.info(
+            "**Demo mode**: this public deployment uses preloaded match data "
+            "for reliable cloud access. Live FBref downloads remain available "
+            "in local environments with Chrome installed."
+        )
+    else:
+        st.sidebar.warning(
+            "**Demo mode**: nessun dato pre caricato in data/demo_cache/. "
+            "Installa Google Chrome per il download live da FBref."
+        )
+
+# ── Selectors ────────────────────────────────────────────────────
+if _demo_mode and _demo_combos:
+    _demo_leagues = sorted(set(l for l, s in _demo_combos))
+    sel_league = st.sidebar.selectbox("Lega", _demo_leagues, key="sel_league")
+    _demo_seasons_for_league = sorted(
+        set(s for l, s in _demo_combos if l == sel_league)
+    )
+    sel_season = st.sidebar.selectbox(
+        "Stagione", _demo_seasons_for_league, key="sel_season"
+    )
+else:
+    sel_league = st.sidebar.selectbox("Lega", LEAGUES, key="sel_league")
+    sel_season = st.sidebar.selectbox("Stagione", SEASONS, key="sel_season")
 sel_max = st.sidebar.slider("Numero partite", 10, 380, 50, key="sel_max")
 
 if st.sidebar.button("🚀 Carica dati", type="primary", use_container_width=True):
-    with st.spinner("Caricamento dati e calcolo indici in corso..."):
-        try:
-            result = _load_and_compute_cached(sel_league, sel_season, sel_max)
-            if result:
-                st.session_state["base_data"] = result
-                st.session_state["data"] = result
-                st.session_state["data_loaded"] = True
-                st.session_state["current_league"] = sel_league
-                st.session_state["current_season"] = sel_season
-                st.session_state["weights"] = {"pressure": 1.0, "discipline": 1.0, "network": 1.0}
-                # Resetta squadre selezionate se non presenti nella nuova lega/stagione
-                teams = result["teams"]
-                for key in ["team_a", "team_b"]:
-                    val = st.session_state.get(key)
-                    if val is not None and val not in teams:
-                        st.session_state.pop(key, None)
-                st.success(f"Dati caricati: {result['n_matches']} partite, {result['n_records']} record, {len(teams)} squadre")
-                st.rerun()
-        except RuntimeError as e:
-            st.error("🚫 Chrome non trovato")
-            with st.expander("Dettaglio errore"):
-                st.markdown(
-                    "Per scaricare dati da FBref e' necessario **Google Chrome** installato.\n\n"
-                    "Soluzioni:\n"
-                    "1. Installa Chrome da [google.com/chrome](https://www.google.com/chrome/)\n"
-                    "2. Usa una combinazione lega/stagione gia' scaricata in precedenza\n"
-                    "3. Su Streamlit Cloud, esegui la pipeline in locale e committa la cache"
+    # Pre-check: in demo mode, validate the combo before attempting load
+    if _demo_mode and _demo_combos and (sel_league, sel_season) not in _demo_combos:
+        _available = ", ".join(f"{l} {s}" for l, s in sorted(_demo_combos))
+        st.info(
+            f"Dati demo non disponibili per **{sel_league} {sel_season}**. "
+            f"Combinazioni disponibili: {_available}."
+        )
+    else:
+        with st.spinner("Caricamento dati e calcolo indici in corso..."):
+            try:
+                result = _load_and_compute_cached(sel_league, sel_season, sel_max)
+                if result:
+                    st.session_state["base_data"] = result
+                    st.session_state["data"] = result
+                    st.session_state["data_loaded"] = True
+                    st.session_state["current_league"] = sel_league
+                    st.session_state["current_season"] = sel_season
+                    st.session_state["weights"] = {"pressure": 1.0, "discipline": 1.0, "network": 1.0}
+                    # Resetta squadre selezionate se non presenti nella nuova lega/stagione
+                    teams = result["teams"]
+                    for key in ["team_a", "team_b"]:
+                        val = st.session_state.get(key)
+                        if val is not None and val not in teams:
+                            st.session_state.pop(key, None)
+                    st.success(f"Dati caricati: {result['n_matches']} partite, {result['n_records']} record, {len(teams)} squadre")
+                    st.rerun()
+            except RuntimeError as e:
+                st.info(
+                    "**Demo mode**: this public deployment uses preloaded match data "
+                    "for reliable cloud access. Live FBref downloads remain available "
+                    "in local environments with Chrome installed."
                 )
-                st.code(str(e))
-        except ValueError as e:
-            st.error("📭 Dati non disponibili")
-            with st.expander("Dettaglio errore"):
-                st.markdown(
-                    f"La combinazione **{sel_league} {sel_season}** non e' disponibile su FBref.\n\n"
-                    "Possibili cause:\n"
-                    "- La lega non esiste per questa stagione\n"
-                    "- Il nome della lega non corrisponde ai codici FBref\n"
-                    "- La stagione non e' ancora iniziata o e' troppo vecchia"
-                )
-                st.code(str(e))
-        except ConnectionError as e:
-            st.error("🌐 Connessione fallita")
-            with st.expander("Dettaglio errore"):
-                st.markdown(
-                    "Impossibile raggiungere FBref. Verifica la connessione internet.\n\n"
-                    "Possibili cause:\n"
-                    "- Blocco firewall o proxy\n"
-                    "- FBref temporaneamente irraggiungibile\n"
-                    "- Rate limiting di FBref (troppe richieste)"
-                )
-                st.code(str(e))
-        except Exception as e:
-            st.error(f"Errore durante il caricamento: {type(e).__name__}")
-            with st.expander("Dettaglio errore"):
-                st.code(str(e))
+            except ValueError as e:
+                st.error("📭 Dati non disponibili")
+                with st.expander("Dettaglio errore"):
+                    st.markdown(
+                        f"La combinazione **{sel_league} {sel_season}** non e' disponibile su FBref.\n\n"
+                        "Possibili cause:\n"
+                        "- La lega non esiste per questa stagione\n"
+                        "- Il nome della lega non corrisponde ai codici FBref\n"
+                        "- La stagione non e' ancora iniziata o e' troppo vecchia"
+                    )
+                    st.code(str(e))
+            except ConnectionError as e:
+                st.error("🌐 Connessione fallita")
+                with st.expander("Dettaglio errore"):
+                    st.markdown(
+                        "Impossibile raggiungere FBref. Verifica la connessione internet.\n\n"
+                        "Possibili cause:\n"
+                        "- Blocco firewall o proxy\n"
+                        "- FBref temporaneamente irraggiungibile\n"
+                        "- Rate limiting di FBref (troppe richieste)"
+                    )
+                    st.code(str(e))
+            except Exception as e:
+                st.error(f"Errore durante il caricamento: {type(e).__name__}")
+                with st.expander("Dettaglio errore"):
+                    st.code(str(e))
 
 data_loaded = st.session_state.get("data_loaded", False)
 

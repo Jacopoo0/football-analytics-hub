@@ -84,7 +84,7 @@ streamlit run app.py
 
 Open `http://localhost:8501` in your browser. Select a league, season, and match count in the sidebar, click **"Carica dati"** (Load Data), and navigate between the five pages.
 
-**Prerequisites:** Python 3.12, Google Chrome (required by `soccerdata` for FBref access), and an internet connection for the initial data download.
+**Prerequisites:** Python 3.12. Google Chrome is required only for live FBref downloads (local development). The cloud demo uses preloaded Parquet datasets and works without Chrome.
 
 ## Optional AI Configuration
 
@@ -137,7 +137,8 @@ football-analytics-hub/
 │   ├── test_core.py             # Core logic, league mapping, cup filter, guardrails
 │   ├── test_config.py           # Env/secrets loading, key masking
 │   └── test_dashboard.py        # Dashboard helpers, AppTest smoke tests, multi-league
-├── data/raw/                    # Parquet cache (gitignored)
+├── data/raw/                    # Live Parquet cache (gitignored)
+├── data/demo_cache/             # Preloaded Parquet files for cloud demo
 ├── reports/output/              # Generated reports (gitignored)
 └── docs/screenshots/            # Demo screenshots
 ```
@@ -168,6 +169,59 @@ Deployment preparation files:
 - `.streamlit/secrets.toml.example` — Reference for configuring the AI key on Streamlit Cloud
 
 The `core/config.py` module reads `GROQ_API_KEY` from multiple sources in priority order: Streamlit secrets (cloud), `.env` file (local), environment variables (both), and `.streamlit/secrets.toml` (local fallback). The first source where a valid key is found wins.
+
+## Cloud Demo Mode
+
+The application is fully functional on **Streamlit Community Cloud** without Google Chrome or live FBref downloads.
+
+### How it works
+
+1. **Preloaded datasets** — Curated Parquet files are stored in `data/demo_cache/` and version-controlled
+2. **Automatic detection** — When Chrome is unavailable (`is_demo_mode()` returns `True`), the loader reads from `data/demo_cache/` instead of attempting a live download
+3. **Selector restriction** — League/season selectors are filtered to combinations actually present in the demo cache
+4. **Non-blocking notice** — A sidebar info box displays: *"Demo mode: this public deployment uses preloaded match data for reliable cloud access. Live FBref downloads remain available in local environments with Chrome installed."*
+
+### Supported datasets
+
+| League | Season | File |
+|---|---|---|
+| ENG-Premier League | 2024-2025 | `ENG_Premier_League_2024-2025.parquet` |
+| ENG-Premier League | 2023-2024 | `ENG_Premier_League_2023-2024.parquet` |
+| ENG-Premier League | 2022-2023 | `ENG_Premier_League_2022-2023.parquet` |
+| ITA-Serie A | 2024-2025 | `ITA_Serie_A_2024-2025.parquet` |
+| ESP-La Liga | 2024-2025 | `ESP_La_Liga_2024-2025.parquet` |
+| GER-Bundesliga | 2024-2025 | `GER_Bundesliga_2024-2025.parquet` |
+| FRA-Ligue 1 | 2024-2025 | `FRA_Ligue_1_2024-2025.parquet` |
+
+### Regenerating demo cache locally
+
+```bash
+python -c "
+from core.data_loader import _demo_cache_path, load_events, _cache_path
+import shutil
+
+combos = [
+    ('ENG-Premier League', '2024-2025'),
+    ('ENG-Premier League', '2023-2024'),
+    ('ENG-Premier League', '2022-2023'),
+    ('ITA-Serie A',       '2024-2025'),
+    ('ESP-La Liga',       '2024-2025'),
+    ('GER-Bundesliga',    '2024-2025'),
+    ('FRA-Ligue 1',       '2024-2025'),
+]
+for league, season in combos:
+    src = _cache_path(league, season)
+    dst = _demo_cache_path(league, season)
+    if src.exists():
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
+        print(f'Copied {src.name} -> {dst}')
+    else:
+        print(f'Cache miss for {league} {season} — download first via run_pipeline.py')
+"
+```
+
+The local `data/raw/` cache remains gitignored. Only `data/demo_cache/` is tracked.
 
 ## Known Limitations
 

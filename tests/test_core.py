@@ -4,6 +4,8 @@ Include test cross-league per verificare che il mapping lega/stagione
 e il caricamento dati siano coerenti per tutte le leghe dichiarate.
 """
 
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
@@ -478,3 +480,216 @@ class TestDataQualityGuardrails:
         assert ratio_40 > 0.3, f"Rimozione 40% deve superare soglia del 30%: {ratio_40:.1%}"
         ratio_20 = (pre - 80) / pre
         assert ratio_20 < 0.3, f"Rimozione 20% deve essere sotto soglia: {ratio_20:.1%}"
+
+
+# ── Demo Mode ────────────────────────────────────────────────────
+
+
+class TestDemoCache:
+    """Test per il caricamento dati da demo cache (cloud/demo mode)."""
+
+    def _make_demo_cache_df(self) -> pd.DataFrame:
+        return pd.DataFrame({
+            "game_id": ["g1", "g1", "g2", "g2"],
+            "team_id": ["Arsenal", "Chelsea", "Arsenal", "Liverpool"],
+            "opponent": ["Chelsea", "Arsenal", "Liverpool", "Arsenal"],
+            "venue": ["Home", "Away", "Away", "Home"],
+            "result": ["W", "L", "D", "D"],
+            "GF": [2, 0, 1, 1],
+            "GA": [0, 2, 1, 1],
+            "Poss": [58, 42, 48, 52],
+            "Fls": [8, 12, 10, 9],
+            "CrdY": [1, 3, 2, 1],
+            "CrdR": [0, 0, 0, 0],
+            "Sh": [10, 3, 8, 6],
+            "SoT": [5, 1, 4, 3],
+            "Gls": [2, 0, 1, 1],
+            "league": ["ENG-Premier League"] * 4,
+            "season": ["2024-2025"] * 4,
+        })
+
+    def _write_demo_cache_parquet(self, df: pd.DataFrame, league: str, season: str,
+                                   monkeypatch, tmp_path: Path) -> Path:
+        """Salva df come parquet in un demo_cache temporaneo."""
+        demo_dir = tmp_path / "demo_cache"
+        demo_dir.mkdir(exist_ok=True)
+        # Patch _DEMO_CACHE to tmp dir
+        import core.data_loader as dl
+        monkeypatch.setattr(dl, "_DEMO_CACHE", demo_dir)
+        # Calcola il path come farebbe _demo_cache_path
+        safe_league = league.replace(" ", "_").replace("-", "_")
+        path = demo_dir / f"{safe_league}_{season}.parquet"
+        df.to_parquet(path, index=False)
+        return path
+
+    def test_load_events_reads_demo_cache_when_chrome_unavailable(
+        self, monkeypatch, tmp_path: Path
+    ):
+        """Quando Chrome non e' disponibile, carica dal demo cache."""
+        import core.data_loader as dl
+        monkeypatch.setattr(dl, "_check_chrome_available", lambda: False)
+        monkeypatch.setattr(dl, "_DATA_RAW", tmp_path / "raw")
+
+        df = self._make_demo_cache_df()
+        self._write_demo_cache_parquet(df, "ENG-Premier League", "2024-2025",
+                                        monkeypatch, tmp_path)
+
+        result = dl.load_events("ENG-Premier League", "2024-2025", max_matches=None)
+        assert len(result) == 4
+        assert "game_id" in result.columns
+        assert result["team_id"].tolist() == ["Arsenal", "Chelsea", "Arsenal", "Liverpool"]
+
+    def test_load_events_demo_cache_matches_subset(
+        self, monkeypatch, tmp_path: Path
+    ):
+        """Con max_matches, il demo cache restituisce solo il sottoinsieme."""
+        import core.data_loader as dl
+        monkeypatch.setattr(dl, "_check_chrome_available", lambda: False)
+        monkeypatch.setattr(dl, "_DATA_RAW", tmp_path / "raw")
+
+        df = self._make_demo_cache_df()
+        self._write_demo_cache_parquet(df, "ENG-Premier League", "2024-2025",
+                                        monkeypatch, tmp_path)
+
+        result = dl.load_events("ENG-Premier League", "2024-2025", max_matches=1)
+        assert len(result) == 2  # 1 game = 2 rows (home + away)
+
+    def test_load_events_demo_cache_missing_raises_value_error(
+        self, monkeypatch, tmp_path: Path
+    ):
+        """Se il demo cache non contiene la combinazione richiesta, ValueError."""
+        import core.data_loader as dl
+        monkeypatch.setattr(dl, "_check_chrome_available", lambda: False)
+        monkeypatch.setattr(dl, "_DATA_RAW", tmp_path / "raw")
+        monkeypatch.setattr(dl, "_DEMO_CACHE", tmp_path / "demo_cache")
+
+        with pytest.raises(ValueError, match="Dati demo non disponibili"):
+            dl.load_events("ENG-Premier League", "2024-2025", max_matches=None)
+
+    def test_is_demo_mode_returns_bool(self):
+        """is_demo_mode deve restituire un booleano."""
+        from core.data_loader import is_demo_mode
+        result = is_demo_mode()
+        assert isinstance(result, bool)
+
+    def test_get_demo_cache_combinations_finds_files(
+        self, monkeypatch, tmp_path: Path
+    ):
+        """get_demo_cache_combinations deve trovare i file Parquet nel demo cache."""
+        import core.data_loader as dl
+        demo_dir = tmp_path / "demo_cache"
+        demo_dir.mkdir(exist_ok=True)
+        monkeypatch.setattr(dl, "_DEMO_CACHE", demo_dir)
+
+        df = self._make_demo_cache_df()
+
+        # Salva due combinazioni
+        safe_pl = "ENG_Premier_League"
+        df_pl = df.copy()
+        df_pl["league"] = "ENG-Premier League"
+        df_pl["season"] = "2024-2025"
+        df_pl.to_parquet(demo_dir / f"{safe_pl}_2024-2025.parquet", index=False)
+
+        safe_sa = "ITA_Serie_A"
+        df_sa = df.copy()
+        df_sa["team_id"] = ["Inter", "Milan", "Inter", "Juventus"]
+        df_sa["league"] = "ITA-Serie A"
+        df_sa["season"] = "2024-2025"
+        df_sa.to_parquet(demo_dir / f"{safe_sa}_2024-2025.parquet", index=False)
+
+        leagues = ["ENG-Premier League", "ITA-Serie A", "ESP-La Liga"]
+        seasons = ["2024-2025", "2023-2024"]
+        combos = dl.get_demo_cache_combinations(leagues, seasons)
+
+        assert ("ENG-Premier League", "2024-2025") in combos
+        assert ("ITA-Serie A", "2024-2025") in combos
+        assert ("ESP-La Liga", "2024-2025") not in combos
+        assert len(combos) == 2
+
+    def test_get_demo_cache_combinations_empty_dir(
+        self, monkeypatch, tmp_path: Path
+    ):
+        """Se il demo cache e' vuoto, restituisce lista vuota."""
+        import core.data_loader as dl
+        empty_dir = tmp_path / "empty_demo"
+        empty_dir.mkdir(exist_ok=True)
+        monkeypatch.setattr(dl, "_DEMO_CACHE", empty_dir)
+
+        combos = dl.get_demo_cache_combinations(
+            ["ENG-Premier League"], ["2024-2025"]
+        )
+        assert combos == []
+
+    def test_demo_cache_not_used_when_chrome_available(
+        self, monkeypatch, tmp_path: Path
+    ):
+        """Con Chrome disponibile, il demo cache NON deve essere usato."""
+        import core.data_loader as dl
+        monkeypatch.setattr(dl, "_check_chrome_available", lambda: True)
+        # Impedisci la scrittura su filesystem reale
+        raw_dir = tmp_path / "raw"
+        raw_dir.mkdir(exist_ok=True)
+        monkeypatch.setattr(dl, "_DATA_RAW", raw_dir)
+        demo_dir = tmp_path / "demo_cache"
+        demo_dir.mkdir(exist_ok=True)
+        monkeypatch.setattr(dl, "_DEMO_CACHE", demo_dir)
+
+        # Crea demo cache file
+        df = self._make_demo_cache_df()
+        df.to_parquet(demo_dir / "ENG_Premier_League_2024-2025.parquet", index=False)
+
+        # Mocka _download_team_match_stats per sollevare un errore controllato
+        def _mock_download(*args, **kwargs):
+            raise RuntimeError("downloader called")
+
+        monkeypatch.setattr(dl, "_download_team_match_stats", _mock_download)
+
+        # Se il demo cache fosse stato usato, load_events non chiamerebbe
+        # _download_team_match_stats e non otterremmo RuntimeError.
+        # Il RuntimeError conferma che il live downloader e' stato invocato,
+        # e quindi che il demo cache NON e' stato usato quando Chrome e' disponibile.
+        with pytest.raises(RuntimeError, match="downloader called"):
+            dl.load_events("ENG-Premier League", "2024-2025", max_matches=None)
+
+    def test_load_events_demo_cache_preserves_columns(
+        self, monkeypatch, tmp_path: Path
+    ):
+        """Le colonne del demo cache devono essere preservate."""
+        import core.data_loader as dl
+        monkeypatch.setattr(dl, "_check_chrome_available", lambda: False)
+        monkeypatch.setattr(dl, "_DATA_RAW", tmp_path / "raw")
+
+        df = self._make_demo_cache_df()
+        self._write_demo_cache_parquet(df, "ENG-Premier League", "2024-2025",
+                                        monkeypatch, tmp_path)
+
+        result = dl.load_events("ENG-Premier League", "2024-2025", max_matches=None)
+        for col in ["game_id", "team_id", "Sh", "SoT", "Gls", "Fls", "CrdY", "CrdR", "Poss"]:
+            assert col in result.columns, f"Colonna {col} mancante nel risultato"
+
+    def test_load_events_demo_cache_respects_league_season(
+        self, monkeypatch, tmp_path: Path
+    ):
+        """Combinazioni lega/stagione diverse non devono interferire."""
+        import core.data_loader as dl
+        monkeypatch.setattr(dl, "_check_chrome_available", lambda: False)
+        monkeypatch.setattr(dl, "_DATA_RAW", tmp_path / "raw")
+        demo_dir = tmp_path / "demo_cache"
+        demo_dir.mkdir(exist_ok=True)
+        monkeypatch.setattr(dl, "_DEMO_CACHE", demo_dir)
+
+        # Salva solo PL
+        df_pl = pd.DataFrame({
+            "game_id": ["g1", "g1"], "team_id": ["Arsenal", "Chelsea"],
+            "opponent": ["Chelsea", "Arsenal"], "GF": [1, 0], "GA": [0, 1],
+            "league": ["ENG-Premier League"] * 2, "season": ["2024-2025"] * 2,
+        })
+        df_pl.to_parquet(demo_dir / "ENG_Premier_League_2024-2025.parquet", index=False)
+
+        # PL deve funzionare
+        r1 = dl.load_events("ENG-Premier League", "2024-2025", max_matches=None)
+        assert len(r1) == 2
+
+        # Serie A (non salvata) deve fallire
+        with pytest.raises(ValueError):
+            dl.load_events("ITA-Serie A", "2024-2025", max_matches=None)
