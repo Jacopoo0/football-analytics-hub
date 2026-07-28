@@ -693,3 +693,31 @@ class TestDemoCache:
         # Serie A (non salvata) deve fallire
         with pytest.raises(ValueError):
             dl.load_events("ITA-Serie A", "2024-2025", max_matches=None)
+
+
+class TestDemoModeImportRegression:
+    """Regression test per l'import statement usato da app.py.
+
+    Riproduce esattamente l'import che ha fallito su Streamlit Cloud:
+        from core.data_loader import load_events, is_demo_mode, get_demo_cache_combinations
+    """
+
+    def test_import_exact_statement_from_app(self):
+        """Esegue l'identico import usato in app.py e verifica che i nomi
+        siano callable, senza coinvolgere soccerdata."""
+        from core.data_loader import load_events, is_demo_mode, get_demo_cache_combinations
+
+        assert callable(is_demo_mode), "is_demo_mode deve essere una funzione"
+        assert callable(get_demo_cache_combinations), "get_demo_cache_combinations deve essere una funzione"
+        assert callable(load_events), "load_events deve essere una funzione"
+
+        # is_demo_mode non deve sollevare eccezioni
+        result = is_demo_mode()
+        assert isinstance(result, bool)
+
+        # get_demo_cache_combinations non deve sollevare eccezioni
+        combos = get_demo_cache_combinations(["ENG-Premier League"], ["2024-2025"])
+        assert isinstance(combos, list)
+        for l, s in combos:
+            assert isinstance(l, str)
+            assert isinstance(s, str)
